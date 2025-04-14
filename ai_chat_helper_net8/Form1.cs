@@ -9,6 +9,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 
 namespace ai_chat_helper_net8;
 
@@ -27,10 +28,14 @@ public partial class Form1 : Form
         dgv_Files.SetControlDoubleBuffered(true);
 
         tbx_outputDir.Text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "aiHelper_out");
+
+        //trigger event
+        chk_mergeAll_intoSingleFile.Checked = true;
+        chk_mergeAll_intoSingleFile.Checked = false;
     }
 
 
-    private void Form1_Load(object sender, EventArgs e){ }
+    private void Form1_Load(object sender, EventArgs e) { }
 
     private void SetupControls()
     {
@@ -67,6 +72,8 @@ public partial class Form1 : Form
         dgv_Files.ReadOnly = true; // Make grid read-only
         dgv_Files.SelectionMode = DataGridViewSelectionMode.FullRowSelect; // User selection style
         dgv_Files.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None; // Adjust column sizing
+        dgv_Files.RowHeadersWidth = 22;
+        dgv_Files.RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.DisableResizing;
 
         // --- Define Columns Manually ---
         // File Path Column
@@ -205,6 +212,9 @@ public partial class Form1 : Form
             tbx_outputDir.Text = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
         else
             tbx_outputDir.Text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "aiHelper_out");
+
+        //  maybe MOVE This into -- binding changed /datasorce changed events..
+        tbx_includeFilter_TextChanged(null, null);// reColor DGV backColor (according to Filter)
     }
 
 
@@ -325,7 +335,7 @@ public partial class Form1 : Form
     }
 
 
-   
+
     // --- Helper Function to Find Common Base Directory ---
     private string? FindCommonBaseDirectory(IEnumerable<string> filePaths)
     {
@@ -442,190 +452,376 @@ public partial class Form1 : Form
         return commonPrefix;
     }
 
-
-    // --- Modified Conversion Button Click Handler ---
-    private void bt_convertToMarkdown_Click(object sender, EventArgs e)
+    // --- MERGE---
+    private void chk_mergeAll_intoSingleFile_CheckedChanged(object sender, EventArgs e)
     {
-        // Get the selected output directory
-        string outputDirectory = tbx_outputDir.Text ;
+        var chksnd = (sender as CheckBox);
+        chk_SplitBy_Type.Enabled = chksnd.Checked;
+    }
 
-        // Basic validation for output directory
+    private string MergeMarkdownFiles(List<string> markdownFilePaths, string outputDirectory)
+    {
+        if (markdownFilePaths == null || !markdownFilePaths.Any())
+        {
+            return "No files provided to merge.";
+        }
+
+        // Use the provided output directory
+        string mergedFileName = "output_merged.md";
+        string mergedFilePath = Path.Combine(outputDirectory, mergedFileName);
+
+        try
+        {
+            Console.WriteLine($"Attempting to merge {markdownFilePaths.Count} files into: {mergedFilePath}");
+            StringBuilder mergedContent = new StringBuilder();
+
+            foreach (string filePath in markdownFilePaths) // These paths are already in the output structure
+            {
+                if (File.Exists(filePath))
+                {
+                    if (mergedContent.Length > 0)
+                    {
+                        mergedContent.AppendLine();
+                        mergedContent.AppendLine("---"); // Separator
+                        mergedContent.AppendLine();
+                    }
+                    // Use relative path from outputDirectory for header if desired, otherwise just filename
+                    string relativeHeaderPath = Path.GetRelativePath(outputDirectory, filePath);
+                    mergedContent.AppendLine($"<!-- Merged from: {relativeHeaderPath} -->");
+                    // Or: mergedContent.AppendLine($"## Merged from: {Path.GetFileName(filePath)}");
+                    mergedContent.AppendLine();
+                    mergedContent.Append(File.ReadAllText(filePath));
+                    Console.WriteLine($"  Appended content from: {filePath}");
+                }
+                else
+                {
+                    Console.WriteLine($"Merge Warning: File not found, skipping: {filePath}");
+                    mergedContent.AppendLine();
+                    mergedContent.AppendLine($"<!-- File not found during merge: {Path.GetFileName(filePath)} -->");
+                    mergedContent.AppendLine();
+                }
+                mergedContent.AppendLine();
+            }
+
+            File.WriteAllText(mergedFilePath, mergedContent.ToString());
+            return $"Successfully merged into: {mergedFilePath}";
+        }
+        catch (IOException ioEx)
+        {
+            Console.WriteLine($"Merge IO Error writing to {mergedFilePath}: {ioEx.Message}");
+            return $"Error writing merged file: {ioEx.Message}";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Unexpected Error during merge: {ex.Message}");
+            return $"An unexpected error occurred during merging: {ex.GetType().Name}";
+        }
+    }
+
+    private async Task MergeFilesAsync(string outputDirectory, StringBuilder content, string outputFileName)
+    {
+        if (content == null || content.Length == 0) return; // Nothing to merge
+
+        string mergedFilePath = Path.Combine(outputDirectory, outputFileName);
+        try
+        {
+            Directory.CreateDirectory(outputDirectory); // Ensure output dir exists
+            await File.WriteAllTextAsync(mergedFilePath, content.ToString());
+            Console.WriteLine($"Successfully merged content into: {mergedFilePath}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error writing merged file '{mergedFilePath}': {ex.Message}");
+            // Optionally show a message box or update status
+            MessageBox.Show($"Failed to write merged file:\n{mergedFilePath}\n\nError: {ex.Message}",
+                            "Merge Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+    private async Task MergeFilesByTypeAsync(string outputDirectory, Dictionary<string, StringBuilder> contentByType)
+    {
+        if (contentByType == null || contentByType.Count == 0) return; // Nothing to merge
+
+        Directory.CreateDirectory(outputDirectory); // Ensure output dir exists
+
+        foreach (var kvp in contentByType)
+        {
+            string fileExtension = kvp.Key; // e.g., ".cs", ".json", ".md"
+            StringBuilder content = kvp.Value;
+            if (content.Length > 0)
+            {
+                // Construct filename like "merged.cs", "merged.json", "merged.md"
+                string mergedFileName = $"merged{fileExtension}";
+                string mergedFilePath = Path.Combine(outputDirectory, mergedFileName);
+                try
+                {
+                    await File.WriteAllTextAsync(mergedFilePath, content.ToString());
+                    Console.WriteLine($"Successfully merged {fileExtension} files into: {mergedFilePath}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error writing merged file '{mergedFilePath}': {ex.Message}");
+                    MessageBox.Show($"Failed to write merged file for type '{fileExtension}':\n{mergedFilePath}\n\nError: {ex.Message}",
+                                   "Merge Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+    }
+    private async void bt_convertToMarkdown_Click(object sender, EventArgs e) // Made async
+    {
+        string outputDirectory = tbx_outputDir.Text;
         if (string.IsNullOrWhiteSpace(outputDirectory))
         {
             MessageBox.Show("Please select a valid output directory.", "Output Directory Missing", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            tbx_outputDir?.Focus(); // Focus the textbox
-            return;
-        }
-        // Optional: Check if directory exists, though CreateDirectory handles non-existence
-        // if (!Directory.Exists(outputDirectory)) { ... }
-
-        // Filter for HTML files to be processed
-        //var htmlFilesToProcess = filesToProcess
-        var htmlFilesToProcess = 
-            GetFiles_matching_includeFilter()
-            .Where(f => Path.GetExtension(f.FilePath).ToLowerInvariant() == ".htm" || Path.GetExtension(f.FilePath).ToLowerInvariant() == ".html")
-            .ToList(); // Process a snapshot
-
-        if (!htmlFilesToProcess.Any())
-        {
-            MessageBox.Show("No HTML (.htm, .html) files found in the list to convert.", "No HTML Files", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            tbx_outputDir?.Focus();
             return;
         }
 
-        // --- Find the Common Base Directory for Structure Preservation ---
-        string? commonBaseDirectory = FindCommonBaseDirectory(htmlFilesToProcess.Select(f => f.FilePath));
-        if (commonBaseDirectory == null)
+        var allFilesToProcess = GetFiles_matching_includeFilter();
+        if (!allFilesToProcess.Any())
         {
-            Console.WriteLine("Could not determine a common base directory. Outputting files flat.");
-            // Decide behavior: error out, or output flat? Let's output flat for this example.
-            // Alternatively:
-            // MessageBox.Show("Could not determine a common base directory for the input files (e.g., files from different drives).\nCannot preserve folder structure.", "Structure Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            // return;
+            MessageBox.Show("No files found in the list to process.", "No Files", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
         }
-        // --------------------------------------------------------------------
 
-        bool mergeOutput = chk_mergeAll_intoSingleFile.Checked ;
+        // --- Determine Active Merge Mode ---
+        bool mergeAllChecked = chk_mergeAll_intoSingleFile.Checked;
+        bool mergeByTypeChecked = chk_SplitBy_Type.Checked;
 
-        // UI Feedback & Processing Logic
+        bool performSingleMerge = false;
+        bool performTypeMerge = false;
+        string activeMergeDescription = "No merge operation selected.";
+
+        if (mergeByTypeChecked) // "Merge by Type" takes precedence if checked (alone or with "Merge All")
+        {
+            performTypeMerge = true;
+            activeMergeDescription = "Merge By Type active.";
+        }
+        else if (mergeAllChecked) // Only active if "Merge by Type" is NOT checked
+        {
+            performSingleMerge = true;
+            activeMergeDescription = "Merge All (Single File) active.";
+        }
+        // else: both false, no merge
+
+        // --- Find Common Base Directory ---
+        string? commonBaseDirectory = FindCommonBaseDirectory(allFilesToProcess.Select(f => f.FilePath));
+
+        // --- UI Feedback & Initialization ---
         bt_convertToMarkdown.Enabled = false;
         bt_convertToMarkdown.Text = "Processing...";
         this.Cursor = Cursors.WaitCursor;
 
-        List<string> successfulMarkdownFiles = new List<string>(); // Stores FULL paths in output dir
-        int processedCount = 0;
-        int successCount = 0;
-        int errorCount = 0;
+        // --- Initialize Data Structures based on ACTIVE merge mode ---
+        StringBuilder mergedContentAll = performSingleMerge ? new StringBuilder() : null;
+        Dictionary<string, StringBuilder> mergedContentByType = performTypeMerge ? new Dictionary<string, StringBuilder>() : null;
 
+        int processedCount = 0;
+        int htmlConvertedCount = 0;
+        int nonHtmlMergedCount = 0;
+        int errorCount = 0;
+        string cssSelector = tbx_CssSelector_for_Root.Text;
+
+        // --- Main Processing Loop ---
         try
         {
-            Console.WriteLine($"--- Starting Markdown Conversion ({htmlFilesToProcess.Count} HTML items) ---");
+            Console.WriteLine($"--- Starting Processing ({allFilesToProcess.Count} items) ---");
             Console.WriteLine($"Output Directory: {outputDirectory}");
             Console.WriteLine($"Common Base Input Directory: {commonBaseDirectory ?? "N/A (Outputting Flat)"}");
-            Console.WriteLine($"Merge Output: {mergeOutput}");
+            Console.WriteLine($"Active Merge Mode: {activeMergeDescription}"); // Log the effective mode
 
-            foreach (var fileInfo in htmlFilesToProcess)
+            foreach (var fileInfo in allFilesToProcess.ToList())
             {
-                MyFile originalFileInfo = filesToProcess.FirstOrDefault(f => f.FilePath == fileInfo.FilePath);
-                if (originalFileInfo == null) continue;
-
                 processedCount++;
-                originalFileInfo.Status = "Processing...";
-                Application.DoEvents(); // Allow UI update (consider async/await)
+                fileInfo.Status = "Processing...";
 
-                string inputFilePath = originalFileInfo.FilePath;
-                string finalOutputMarkdownPath; // This will be the full path in the output structure
+                string inputFilePath = fileInfo.FilePath;
+                string fileExtension = Path.GetExtension(inputFilePath).ToLowerInvariant();
+                string fileName = Path.GetFileName(inputFilePath);
 
                 try
                 {
-                    // --- Calculate Output Path with Structure Preservation ---
-                    string markdownFileName = Path.ChangeExtension(Path.GetFileName(inputFilePath), ".md");
-                    string relativePath = ""; // default, treat as flat
+                    string contentToMerge = null;
+                    string mergeKeyExtension = fileExtension; // Default to original extension for merging
+                    bool isHtml = (fileExtension == ".htm" || fileExtension == ".html");
 
-                    if (commonBaseDirectory != null)
+                    // --- HTML File Processing ---
+                    if (isHtml)
                     {
-                        try
-                        {
-                            // Get the directory of the input file relative to the common base
-                            string? inputFileDir = Path.GetDirectoryName(inputFilePath);
-                            if (inputFileDir != null)
+                        string markdownFileName = Path.ChangeExtension(fileName, ".md");
+                        string finalOutputMarkdownPath;
+                        string targetSubDir = outputDirectory;
+
+                        if (commonBaseDirectory != null)
+                        { /* ... (calculate targetSubDir based on relative path as before) ... */
+                            try
                             {
-                                relativePath = Path.GetRelativePath(commonBaseDirectory, inputFileDir);
+                                string? inputFileDir = Path.GetDirectoryName(inputFilePath);
+                                if (inputFileDir != null)
+                                {
+                                    string relativePath = Path.GetRelativePath(commonBaseDirectory, inputFileDir);
+                                    if (relativePath != "." && !string.IsNullOrEmpty(relativePath))
+                                    {
+                                        targetSubDir = Path.Combine(outputDirectory, relativePath);
+                                    }
+                                }
+                            }
+                            catch (ArgumentException argEx)
+                            {
+                                Console.WriteLine($"Warning: Could not get relative path for {inputFilePath} from {commonBaseDirectory}. Outputting flat. Error: {argEx.Message}");
                             }
                         }
-                        catch (ArgumentException argEx)
+
+                        finalOutputMarkdownPath = Path.Combine(targetSubDir, markdownFileName);
+                        Directory.CreateDirectory(targetSubDir);
+
+                        bool conversionSuccess = ConvertHtmlToMarkdown(inputFilePath, finalOutputMarkdownPath, cssSelector);
+
+                        if (conversionSuccess)
                         {
-                            Console.WriteLine($"Warning: Could not get relative path for {inputFilePath} from {commonBaseDirectory}. Outputting flat. Error: {argEx.Message}");
-                            relativePath = ""; // Fallback to flat structure on error
+                            htmlConvertedCount++;
+                            fileInfo.Status = "Converted";
+                            Console.WriteLine($" -> Converted HTML: {inputFilePath} to {finalOutputMarkdownPath}");
+
+                            // --- Read CONVERTED Markdown for Merging (if active) ---
+                            if (performSingleMerge || performTypeMerge)
+                            {
+                                try
+                                {
+                                    contentToMerge = await File.ReadAllTextAsync(finalOutputMarkdownPath);
+                                    mergeKeyExtension = ".md"; // Use .md extension for the merge key/grouping
+                                }
+                                catch (IOException readEx)
+                                {
+                                    Console.WriteLine($" -> Error reading converted file for merging '{finalOutputMarkdownPath}': {readEx.Message}");
+                                    fileInfo.Status = "Converted (Merge Read Error)";
+                                    errorCount++; // Count this as an error
+                                    contentToMerge = null; // Ensure it's not added to merge data
+                                }
+                            }
+                        }
+                        else
+                        {
+                            errorCount++;
+                            fileInfo.Status = "Error: Conversion Failed";
+                            Console.WriteLine($" -> Failed conversion (handled): {inputFilePath}");
                         }
                     }
-
-                    // If relative path is "." (meaning file is in the base dir), make it empty
-                    if (relativePath == ".") relativePath = "";
-
-                    // Combine output directory, relative path, and new filename
-                    string targetSubDir = Path.Combine(outputDirectory, relativePath);
-                    finalOutputMarkdownPath = Path.Combine(targetSubDir, markdownFileName);
-
-                    // Ensure the target subdirectory exists
-                    Directory.CreateDirectory(targetSubDir); // Creates intermediate directories if needed
-                    // --- End Calculate Output Path ---
-
-
-                    // --- Perform Conversion ---
-                    ////bool conversionSuccess = ConvertHtmlToMarkdown_notgood(inputFilePath, finalOutputMarkdownPath); // Use the actual implementation
-                    bool conversionSuccess =
-                        ConvertHtmlToMarkdown(
-                            inputFilePath,
-                            finalOutputMarkdownPath
-                            , tbx_CssSelector_for_Root.Text);
-
-                    if (conversionSuccess)
-                    {
-                        originalFileInfo.Status = "Converted";
-                        successCount++;
-                        if (mergeOutput)
-                        {
-                            successfulMarkdownFiles.Add(finalOutputMarkdownPath); // Add the *output* path
-                        }
-                        // Console.WriteLine($" -> Successfully converted: {finalOutputMarkdownPath}");
-                    }
+                    // --- Non-HTML File Processing ---
                     else
                     {
-                        originalFileInfo.Status = "Error: Conversion Failed";
-                        errorCount++;
-                        Console.WriteLine($" -> Failed conversion (handled): {inputFilePath}");
+                        fileInfo.Status = "Skipped (Type)"; // Default status
+                        // --- Read ORIGINAL content for Merging (if active) ---
+                        if (performSingleMerge || performTypeMerge)
+                        {
+                            try
+                            {
+                                contentToMerge = await File.ReadAllTextAsync(inputFilePath);
+                                fileInfo.Status = "Read for Merging"; // Update status
+                                nonHtmlMergedCount++;
+                                // mergeKeyExtension remains the original fileExtension
+                            }
+                            catch (IOException readEx)
+                            {
+                                Console.WriteLine($" -> Error reading non-HTML file for merging '{inputFilePath}': {readEx.Message}");
+                                fileInfo.Status = "Error: Merge Read Failed";
+                                errorCount++;
+                                contentToMerge = null; // Ensure it's not added
+                            }
+                        }
+                        else // Not merging
+                        {
+                            Console.WriteLine($" -> Skipped (Non-HTML, No Merge): {inputFilePath}");
+                        }
+                    }
+
+                    // --- Append Content to Merge Data (if applicable and content exists) ---
+                    if (contentToMerge != null) // Only add if read successfully
+                    {
+                        string header;
+                        if (isHtml && mergeKeyExtension == ".md")
+                        {
+                            header = $"--- File: {fileName} (Converted to Markdown) ---";
+                        }
+                        else
+                        {
+                            header = $"--- File: {fileName} ---";
+                        }
+
+
+                        if (performSingleMerge && mergedContentAll != null)
+                        {
+                            mergedContentAll.AppendLine(header);
+                            mergedContentAll.AppendLine(contentToMerge);
+                            mergedContentAll.AppendLine();
+                        }
+                        else if (performTypeMerge && mergedContentByType != null) // Use 'else if' as modes are exclusive
+                        {
+                            if (!mergedContentByType.TryGetValue(mergeKeyExtension, out var sb))
+                            {
+                                sb = new StringBuilder();
+                                mergedContentByType[mergeKeyExtension] = sb;
+                            }
+                            sb.AppendLine(header);
+                            sb.AppendLine(contentToMerge);
+                            sb.AppendLine();
+                        }
                     }
                 }
-                catch (Exception ex)
+                catch (Exception ex) // Catch errors during processing of a single file
                 {
-                    originalFileInfo.Status = $"Error: {ex.GetType().Name}"; errorCount++;
-                    Console.WriteLine($" FAILED (Unexpected) converting {inputFilePath}: {ex.Message}");
+                    errorCount++;
+                    fileInfo.Status = $"Error: {ex.GetType().Name}";
+                    Console.WriteLine($" FAILED (Unexpected) processing {inputFilePath}: {ex.Message}");
                 }
+
             } // End foreach loop
 
-            // Update status for non-HTML files in the main list
-            foreach (var fileInfo in filesToProcess.Except(htmlFilesToProcess))
+            Console.WriteLine($"--- File Processing Phase Complete. Processed: {processedCount}, HTML Converted: {htmlConvertedCount}, Non-HTML Read for Merge: {nonHtmlMergedCount}, Errors: {errorCount} ---");
+
+            // --- Perform Merging AFTER loop based on ACTIVE flags ---
+            string mergeSummary = "No merge operation performed.";
+            if (performSingleMerge && mergedContentAll != null && mergedContentAll.Length > 0)
             {
-                if (fileInfo.Status == "draggedViaMouse" || fileInfo.Status == "Initialized" || string.IsNullOrEmpty(fileInfo.Status))
-                {
-                    fileInfo.Status = "Skipped (Type)";
-                }
+                await MergeFilesAsync(outputDirectory, mergedContentAll, "merged_all_files.txt");
+                mergeSummary = $"Merged all processed files into 'merged_all_files.txt'.";
+            }
+            else if (performTypeMerge && mergedContentByType != null && mergedContentByType.Values.Any(sb => sb.Length > 0))
+            {
+                await MergeFilesByTypeAsync(outputDirectory, mergedContentByType);
+                mergeSummary = $"Merged files by type (e.g., 'merged.cs', 'merged.md', ...).";
+            }
+            else if (performSingleMerge || performTypeMerge) // A merge was selected but resulted in no content
+            {
+                mergeSummary = "Merge operation selected, but no content was available or read successfully to merge.";
+                Console.WriteLine(mergeSummary);
             }
 
 
-            Console.WriteLine($"--- Conversion Phase Complete. Processed: {processedCount}, Success: {successCount}, Errors: {errorCount} ---");
+            // --- Final Summary ---
+            string summary = $"Processing finished.\n\n" +
+                             $"Total Files Processed: {processedCount}\n" +
+                             $"HTML Files Converted: {htmlConvertedCount}\n" +
+                             $"Non-HTML Files Read (for merge): {nonHtmlMergedCount}\n" +
+                             $"Errors: {errorCount}\n\n" +
+                             $"{mergeSummary}";
 
-            // Merging Logic (uses outputDirectory)
-            string mergeResult = "";
-            if (mergeOutput && successfulMarkdownFiles.Any())
-            {
-                mergeResult = MergeMarkdownFiles(successfulMarkdownFiles, outputDirectory); // Pass output dir
-            }
-            else if (mergeOutput)
-            {
-                mergeResult = "No successful markdown files were created to merge.";
-            }
-
-            string summary = $"Conversion finished.\n\nProcessed HTML Files: {processedCount}\nSuccessful: {successCount}\nErrors: {errorCount}";
-            if (mergeOutput)
-                summary += $"\n\nMerge Result: {mergeResult}";
-
-            // MessageBox.Show(summary, "Conversion Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            Text = " Done. at " + DateTime.Now.ToLongTimeString() + " --> " + summary.ReplaceLineEndings(" ; ");
+            this.Text = $" {this.Text.Split(" --> ")[0]} --> Done. at {DateTime.Now.ToLongTimeString()} --> {summary.ReplaceLineEndings(" ; ")}";
         }
-        catch (Exception ex)
+        catch (Exception ex) // Catch unexpected errors during the overall process
         {
-            MessageBox.Show($"An unexpected error occurred during the conversion process:\n\n{ex.Message}", "Processing Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show($"An unexpected error occurred during the process:\n\n{ex.Message}", "Processing Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            Console.WriteLine($"FATAL ERROR during processing: {ex.ToString()}");
         }
         finally
         {
             bt_convertToMarkdown.Enabled = true;
-            bt_convertToMarkdown.Text = "Convert to Markdown";
+            bt_convertToMarkdown.Text = "Convert / Process";
             this.Cursor = Cursors.Default;
+            // Consider refreshing your file list UI here
         }
     }
 
- 
+
     private bool ConvertHtmlToMarkdown_notgood(string filePath, string outputMarkdownPath)
     {
         try
@@ -690,64 +886,6 @@ public partial class Form1 : Form
     }
 
 
-    private string MergeMarkdownFiles(List<string> markdownFilePaths, string outputDirectory)
-    {
-        if (markdownFilePaths == null || !markdownFilePaths.Any())
-        {
-            return "No files provided to merge.";
-        }
-
-        // Use the provided output directory
-        string mergedFileName = "output_merged.md";
-        string mergedFilePath = Path.Combine(outputDirectory, mergedFileName);
-
-        try
-        {
-            Console.WriteLine($"Attempting to merge {markdownFilePaths.Count} files into: {mergedFilePath}");
-            StringBuilder mergedContent = new StringBuilder();
-
-            foreach (string filePath in markdownFilePaths) // These paths are already in the output structure
-            {
-                if (File.Exists(filePath))
-                {
-                    if (mergedContent.Length > 0)
-                    {
-                        mergedContent.AppendLine();
-                        mergedContent.AppendLine("---"); // Separator
-                        mergedContent.AppendLine();
-                    }
-                    // Use relative path from outputDirectory for header if desired, otherwise just filename
-                    string relativeHeaderPath = Path.GetRelativePath(outputDirectory, filePath);
-                    mergedContent.AppendLine($"<!-- Merged from: {relativeHeaderPath} -->");
-                    // Or: mergedContent.AppendLine($"## Merged from: {Path.GetFileName(filePath)}");
-                    mergedContent.AppendLine();
-                    mergedContent.Append(File.ReadAllText(filePath));
-                    Console.WriteLine($"  Appended content from: {filePath}");
-                }
-                else
-                {
-                    Console.WriteLine($"Merge Warning: File not found, skipping: {filePath}");
-                    mergedContent.AppendLine();
-                    mergedContent.AppendLine($"<!-- File not found during merge: {Path.GetFileName(filePath)} -->");
-                    mergedContent.AppendLine();
-                }
-                mergedContent.AppendLine();
-            }
-
-            File.WriteAllText(mergedFilePath, mergedContent.ToString());
-            return $"Successfully merged into: {mergedFilePath}";
-        }
-        catch (IOException ioEx)
-        {
-            Console.WriteLine($"Merge IO Error writing to {mergedFilePath}: {ioEx.Message}");
-            return $"Error writing merged file: {ioEx.Message}";
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Unexpected Error during merge: {ex.Message}");
-            return $"An unexpected error occurred during merging: {ex.GetType().Name}";
-        }
-    }
 
 
 
@@ -787,6 +925,10 @@ public partial class Form1 : Form
 
         UpdateFormTitle(); // Update the form title
         Console.WriteLine($"--- Files deleted. Triggered ResetBindings. {selectedFiles.Count} files deleted ---");
+
+        //update filter 
+        tbx_includeFilter_TextChanged(null, null);// reColor DGV backColor (according to Filter)
+
     }
 
     private void bt_clear_Click(object sender, EventArgs e) => filesToProcess.Clear();
@@ -806,7 +948,7 @@ public partial class Form1 : Form
         string[] lines = filterText.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
         foreach (string line in lines)
         {
-            string[] lineTerms = line.Split(new[] { ';' ,',' }, StringSplitOptions.RemoveEmptyEntries);
+            string[] lineTerms = line.Split(new[] { ';', ',' }, StringSplitOptions.RemoveEmptyEntries);
             foreach (string term in lineTerms)
             {
                 if (string.IsNullOrWhiteSpace(term.Trim()))
@@ -862,14 +1004,14 @@ public partial class Form1 : Form
 
             if (row.DataBoundItem == null) // Ensure row is bound to data
                 continue;
-            
+
             var itemx = (row.DataBoundItem as MyFile);
             if (itemx == null) // no item - skip Next row
                 continue;
 
-            if(is_myFile_Matches_Filter(filterTerms, itemx) )
+            if (is_myFile_Matches_Filter(filterTerms, itemx))
                 row.DefaultCellStyle.BackColor = Color.Yellow; // Highlight row
-            
+
         }
     }
 
@@ -889,17 +1031,10 @@ public partial class Form1 : Form
         return false;
     }
 
-    private void tbx_includeFilter_TextChanged(object sender, EventArgs e) // Renamed here
-    {
-        ApplyFilenameFilter();
-    }
+    private void tbx_includeFilter_TextChanged(object sender, EventArgs e) => ApplyFilenameFilter();
+    private void bt_ClearFilterTbx_Click(object sender, EventArgs e) => tbx_includeFilter.Text = "";
 
 
-    private void bt_filterExample_Click(object sender, EventArgs e)
-    {
-        tbx_includeFilter.Text = "example\r\nv2;report\r\nini";
-    }
-
-
+   
 
 }
