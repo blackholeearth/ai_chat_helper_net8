@@ -3,6 +3,9 @@
 
 50% vibed with gemini 2.5 ...
 
+### requiremets
+ * windows 10 ,11
+ * install .net8  - [here -> .NET 8 Desktop Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/runtime-desktop-8.0.15-windows-x64-installer)
 
 #### WHY?  
 
