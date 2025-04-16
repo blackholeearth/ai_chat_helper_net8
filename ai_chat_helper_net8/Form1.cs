@@ -310,7 +310,7 @@ public partial class Form1 : Form
         int totalCount = filesToProcess.Count; // Get the current total count
 
         // Start building the title string
-        string title = $"File Collector --- Total: {totalCount} files";
+        string title = $"AI CHAT HELPER ( Merge Files  / Convert .html to .md )  --- Total: {totalCount} files";
 
         // Append details about the last drop operation if relevant counts were provided
         if (addedLastDrop > 0 || ignoredLastDrop > 0)
