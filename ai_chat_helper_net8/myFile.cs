@@ -2,7 +2,7 @@ using System;
 
 namespace ai_chat_helper_net8;
 
-public class MyFile : IEquatable<MyFile> // Renamed from FilesToBeProcessed
+public partial class MyFile 
 {
     // Properties are often preferred for DataGridView binding
     public string FilePath { get; set; }
@@ -21,21 +21,22 @@ public class MyFile : IEquatable<MyFile> // Renamed from FilesToBeProcessed
     {
         return $"{FilePath} ({Status})";
     }
+}
 
 
+public partial class MyFile : IEquatable<MyFile> 
+{
 	//---------  class MyFile : IEquatable<MyFile>   // Hashset distinct Add Helper
 	public bool Equals(MyFile other)
 	{
-		if (other is null) 
+		if (other is null)
 			return false;
+
 		return this.FilePath == other.FilePath;
 	}
 
 	public override bool Equals(object obj) => Equals(obj as MyFile);
 
-	public override int GetHashCode()
-	{
-		return FilePath.GetHashCode();
-	}
+	public override int GetHashCode() => FilePath.GetHashCode();
 
 }
