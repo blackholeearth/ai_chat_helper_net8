@@ -47,6 +47,7 @@
 			groupBox3 = new GroupBox();
 			bt_ClearFilterTbx = new Button();
 			label3 = new Label();
+			bt_RemoveFilterHitRows = new Button();
 			((System.ComponentModel.ISupportInitialize)dgv_Files).BeginInit();
 			groupBox1.SuspendLayout();
 			groupBox2.SuspendLayout();
@@ -63,7 +64,7 @@
 			dgv_Files.Name = "dgv_Files";
 			dgv_Files.ReadOnly = true;
 			dgv_Files.RowHeadersWidth = 51;
-			dgv_Files.Size = new Size(688, 479);
+			dgv_Files.Size = new Size(756, 479);
 			dgv_Files.TabIndex = 1;
 			// 
 			// lbl_filepaths
@@ -121,7 +122,7 @@
 			// 
 			// bt_clear
 			// 
-			bt_clear.Location = new Point(644, 40);
+			bt_clear.Location = new Point(884, 39);
 			bt_clear.Name = "bt_clear";
 			bt_clear.Size = new Size(123, 57);
 			bt_clear.TabIndex = 7;
@@ -173,7 +174,7 @@
 			// 
 			// bt_removeSelectedRows
 			// 
-			bt_removeSelectedRows.Location = new Point(784, 40);
+			bt_removeSelectedRows.Location = new Point(755, 40);
 			bt_removeSelectedRows.Name = "bt_removeSelectedRows";
 			bt_removeSelectedRows.Size = new Size(123, 57);
 			bt_removeSelectedRows.TabIndex = 11;
@@ -257,11 +258,22 @@
 			label3.TabIndex = 18;
 			label3.Text = "Filter:";
 			// 
+			// bt_RemoveFilterHitRows
+			// 
+			bt_RemoveFilterHitRows.Location = new Point(599, 40);
+			bt_RemoveFilterHitRows.Name = "bt_RemoveFilterHitRows";
+			bt_RemoveFilterHitRows.Size = new Size(123, 57);
+			bt_RemoveFilterHitRows.TabIndex = 18;
+			bt_RemoveFilterHitRows.Text = "Remove Filter_Hit_Rows";
+			bt_RemoveFilterHitRows.UseVisualStyleBackColor = true;
+			bt_RemoveFilterHitRows.Click += bt_RemoveFilterHitRows_Click;
+			// 
 			// Form1
 			// 
 			AutoScaleDimensions = new SizeF(120F, 120F);
 			AutoScaleMode = AutoScaleMode.Dpi;
-			ClientSize = new Size(988, 606);
+			ClientSize = new Size(1056, 606);
+			Controls.Add(bt_RemoveFilterHitRows);
 			Controls.Add(dgv_Files);
 			Controls.Add(groupBox3);
 			Controls.Add(groupBox2);
@@ -303,5 +315,6 @@
         private CheckBox checkBox2;
         private Label label3;
         private Button bt_ClearFilterTbx;
-    }
+		private Button bt_RemoveFilterHitRows;
+	}
 }
