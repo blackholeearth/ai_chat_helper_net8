@@ -76,18 +76,6 @@ public partial class Form1 : Form
 		dgv_Files.RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.DisableResizing;
 
 		// --- Define Columns Manually ---
-		// File Path Column
-		var filePathCol = new DataGridViewTextBoxColumn
-		{
-			Name = "FilePathColumn",
-			HeaderText = "File Path",
-			DataPropertyName = nameof(MyFile.FilePath), // Binds to the FilePath property
-			AutoSizeMode = DataGridViewAutoSizeColumnMode.None, // Let path fill available space
-			FillWeight = 70 // Give more weight to path column
-		};
-		dgv_Files.Columns.Add(filePathCol);
-
-		// Status Column
 		var statusCol = new DataGridViewTextBoxColumn
 		{
 			Name = "StatusColumn",
@@ -98,17 +86,27 @@ public partial class Form1 : Form
 		};
 		dgv_Files.Columns.Add(statusCol);
 
-		// Status Column
 		var isfilterhitCol = new DataGridViewCheckBoxColumn
 		{
 			Name = "isfilterhitColumn",
-			HeaderText = "isfilterhit",
+			HeaderText = "is filter hit",
 			DataPropertyName = nameof(MyFile.isFilterHit), // Binds to the Status property
 			AutoSizeMode = DataGridViewAutoSizeColumnMode.None, // Size based on content
 			//FillWeight = 30 // Give less weight to status column
 			Width = 50,
 		};
 		dgv_Files.Columns.Add(isfilterhitCol);
+
+		// File Path Column
+		var filePathCol = new DataGridViewTextBoxColumn
+		{
+			Name = "FilePathColumn",
+			HeaderText = "File Path",
+			DataPropertyName = nameof(MyFile.FilePath), // Binds to the FilePath property
+			AutoSizeMode = DataGridViewAutoSizeColumnMode.None, // Let path fill available space
+			FillWeight = 70 // Give more weight to path column
+		};
+		dgv_Files.Columns.Add(filePathCol);
 
 		dgv_Files.AllowUserToResizeColumns = true;
 
@@ -134,8 +132,6 @@ public partial class Form1 : Form
 			e.Effect = DragDropEffects.None;
 		}
 	}
-	// Located within your Form1 class
-	// Required using statements: System, System.Collections.Generic, System.IO, System.Linq, System.Windows.Forms, System.ComponentModel
 
 	private void tbx_filepaths_DragDrop(object sender, DragEventArgs e)
 	{
@@ -340,8 +336,6 @@ public partial class Form1 : Form
 	}
 
 
-	// Inside your Form1 class
-
 	/// <summary>
 	/// Updates the form's title bar with total file count and details from the last drag-drop operation.
 	/// </summary>
@@ -375,7 +369,6 @@ public partial class Form1 : Form
 			this.Text = title;
 		}
 	}
-
 
 
 	// --- Helper Function to Find Common Base Directory ---
@@ -1033,7 +1026,6 @@ public partial class Form1 : Form
 
 
 	//------------ filter logic
-
 	private List<string> GetFilterTerms(string filterText)
 	{
 		List<string> terms = new List<string>();
@@ -1056,7 +1048,6 @@ public partial class Form1 : Form
 		}
 		return terms;
 	}
-
 
 	private List<MyFile> GetFiles_matching_includeFilter()
 	{
