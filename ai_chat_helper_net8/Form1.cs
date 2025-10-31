@@ -1075,7 +1075,7 @@ public partial class Form1 : Form
 	private List<MyFile> GetFiles_ALL() => filesToProcess.ToList();
 
 
-	private void ApplyFilenameFilter()
+	private void ApplyFilenameFilter_OLD()
 	{
 		List<string> filterTerms = GetFilterTerms(tbx_includeFilter.Text); // Renamed here
 
@@ -1085,9 +1085,7 @@ public partial class Form1 : Form
 			foreach (DataGridViewRow row in dgv_Files.Rows)
 			{
 				row.DefaultCellStyle.BackColor = SystemColors.Window; // Reset to default background
-
 				(row.DataBoundItem as MyFile).isFilterHit = false;
-
 			}
 			return; // Exit if no filter terms
 		}
@@ -1114,6 +1112,39 @@ public partial class Form1 : Form
 
 		}
 	}
+	private void ApplyFilenameFilter()
+	{
+		// clear highlighting
+		foreach (DataGridViewRow row in dgv_Files.Rows)
+		{
+			row.DefaultCellStyle.BackColor = SystemColors.Window; // Reset to default background
+			(row.DataBoundItem as MyFile).isFilterHit = false;
+		}
+
+		List<string> filterTerms = GetFilterTerms(tbx_includeFilter.Text); // Renamed here
+		if (filterTerms.Count == 0)
+			return; // Exit if no filter terms
+
+
+		foreach (DataGridViewRow row in dgv_Files.Rows)
+		{
+			if (row.DataBoundItem == null) // Ensure row is bound to data
+				continue;
+
+			var itemx = (row.DataBoundItem as MyFile);
+			if (itemx == null) // no item - skip Next row
+				continue;
+
+			if (is_myFile_Matches_Filter(filterTerms, itemx))
+			{
+				row.DefaultCellStyle.BackColor = Color.Yellow; // Highlight row
+				(row.DataBoundItem as MyFile).isFilterHit = true;
+			}
+
+
+		}
+	}
+
 
 	private static bool is_myFile_Matches_Filter(List<string> filterTerms, MyFile itemx)
 	{
